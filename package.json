@@ -1,0 +1,22 @@
+{
+  "name": "simulated-city",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "start": "node ./server/app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finnjwohner/simulated-city.git"
+  },
+  "author": "Finn J. Wohner",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/finnjwohner/simulated-city/issues"
+  },
+  "homepage": "https://github.com/finnjwohner/simulated-city#readme",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
