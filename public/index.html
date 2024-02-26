@@ -12,9 +12,29 @@
      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
      crossorigin=""></script>
+     <script>var exports = {};</script>
      <script type="module" src="./main.js" defer></script>
     </head>
     <body>
         <div id="map"></div>
+        <div id="wrapper">
+            <header>
+                <h1>Simulated City</h1>
+            </header>
+            <aside>
+                <div class="flex-row">
+                    <button>Start</button>
+                    <button>Pause</button>
+                    <button>Stop</button>
+                </div>
+                <div class="flex-row">
+                    <h3>Vehicle Agents</h3>
+                    <button class="square" id="add-agent-btn">+</button>
+                    <button class="square" id="remove-agent-btn">-</button>
+                </div>
+                <div class="agent-display"></div>
+            </aside>
+        </div>
+        
     </body>
 </html>

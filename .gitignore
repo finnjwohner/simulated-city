@@ -1,5 +1,5 @@
 node_modules
-server/**/*.js
-server/**/*.js.map
+*.js
+*.js.map
 server/geoJson/roadLinkLatLong.json
 server/geoJson/roadNodeLatLong.json
