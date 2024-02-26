@@ -4,6 +4,8 @@
   "description": "",
   "main": "app.js",
   "scripts": {
+    "build": "npx tsc",
+    "convertCoords": "node ./server/util/bngToLatLong",
     "start": "node ./server/app.js"
   },
   "repository": {
@@ -17,6 +19,11 @@
   },
   "homepage": "https://github.com/finnjwohner/simulated-city#readme",
   "dependencies": {
+    "@types/geojson": "^7946.0.14",
     "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.20",
+    "typescript": "^5.3.3"
   }
 }

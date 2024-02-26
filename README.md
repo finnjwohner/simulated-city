@@ -11,5 +11,7 @@ A web-based spatial agent based modelling system for urban transport. Ideally th
 
 1. Clone the repo onto your local machine
 2. Run `npm install` in the repo root directory
-3. Run `npm start`
-4. Navigate to localhost:3000
+3. Run `npm run build` in the repo root directory
+4. Run `npm run convertCoords` in the repo root directory
+5. Run `npm run start`
+6. Navigate to localhost:3000
