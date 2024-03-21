@@ -8,6 +8,8 @@ export default class Agent {
         this.segmentDistAcc = 0;
         this.segmentBearing = 0;
         this.marker = null;
+        this.speed = 0;
         this.forwards = true;
+        this.nextRoad = null;
     }
 }

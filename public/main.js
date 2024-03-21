@@ -12,6 +12,8 @@ let roadLinks = null;
 let roadNodes = null;
 let graph = null;
 
+const timeStep = 1000/30;
+
 async function getGeoJson() {
     const response = await fetch('http://localhost:3000/geoJson');
     const json = await response.json();
@@ -25,9 +27,11 @@ async function getGeoJson() {
     graph = network.createGraph(roadLinks, roadNodes);
 
     InitialiseAgents(graph);
+    agents[0].frontAgent = agents[1];
+    agents[1].frontAgent = agents[0];
     setInterval(() => {
         UpdateAgents(graph);
-    }, 1000/30)
+    }, timeStep)
     
 }
 
@@ -44,7 +48,7 @@ let segmentBearing = 0;
 let marker = null;
 let forwards = true;
 
-const numAgents = 1;
+const numAgents = 2;
 const agents = [];
 
 const InitialiseAgents = graph => {
@@ -61,10 +65,29 @@ const AddAgent = (graph, index) => {
     const road = graph.roads[keys[keys.length * Math.random() << 0]];
 
     agent.currentRoad = road;
+    let queue = agent.forwards ? agent.currentRoad.forwardTrafficQueue : agent.currentRoad.backwardTrafficQueue;
+    queue.push(agent);
     agent.currentLat = road.coordinates[0][1];
     agent.currentLong = road.coordinates[0][0];
     agent.marker = L.marker([road.coordinates[0][1], road.coordinates[0][0]]).addTo(map);
     agent.segmentIndex = agent.forwards ? 0 : road.coordinates.length - 1;
+    agent.desiredSpeed = 80;
+
+    const nextJunction = agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction;
+    const junction = graph.junctions[nextJunction];
+
+    if (junction.roads.length > 1) {
+        const avoidIndex = junction.roads.indexOf(agent.currentRoad);
+
+        let rand = 0
+        do {
+            rand = Math.floor(Math.random() * (junction.roads.length));
+        } while(rand == avoidIndex);
+
+        agent.nextRoad = junction.roads[rand];
+    } else {
+        agent.nextRoad = junction.roads[0];
+    }
 
     const nextSegment = agent.forwards ? segmentIndex + 1 : segmentIndex - 1;
     agent.segmentBearing = geoForm.Bearing(agent.currentLat, agent.currentLong, road.coordinates[nextSegment][1], road.coordinates[nextSegment][0]);
@@ -94,14 +117,103 @@ removeAgentBtn.addEventListener('click', () => {
     map.removeLayer(agent.marker);
 })
 
+const distanceRequiredToStop = speedMph => {
+    return 0.015 * speedMph * speedMph;
+}
+
+const MphToMps = speedMph => {
+    return speedMph / 2.237;
+}
+
+const AgentSpeedToMph = agentSpeed => {
+    return agentSpeed * timeStep * 2.237 * 1000;
+}
+
+const MphToAgentSpeed = speedMph => {
+    return MphToMps(speedMph) / timeStep / 1000;
+}
+
+const DistBetweenAgents = (agent1, agent2) => {
+    return geoForm.Distance(agent1.currentLat, agent1.currentLong, agent2.currentLat, agent2.currentLong);
+}
+
+const DesiredAgentSpeed = (agent) => {
+    // speeds in metres per second
+
+    let maximumAcceleration = 1.5 / timeStep;
+    let desiredSpeed = MphToMps(agent.desiredSpeed);
+    let reactionTime = 1.1;
+
+    let speed =  2.5 * maximumAcceleration * reactionTime * (1 - (agent.speed*timeStep*1000)/desiredSpeed) * Math.pow((0.025 + (agent.speed*timeStep*1000)/desiredSpeed), 0.5);
+    return agent.speed + (speed / timeStep / 1000);
+}
+
+const FrontAgent = agent => {
+    let queue = agent.forwards ? agent.currentRoad.forwardTrafficQueue : agent.currentRoad.backwardTrafficQueue;
+
+    let index = queue.indexOf(agent);
+    if (index == 0) {
+        return null;
+    }
+    else {
+        return queue[index - 1];
+    }
+}
+
+const ControlledSpeed = agent => {
+    const frontAgent = FrontAgent(agent);
+
+    if (frontAgent == null) {
+        return 999999;
+    }
+
+    let maxDe = -1.5;
+    let reactionTime = 1.1;
+
+    let distCheck = (DistBetweenAgents(agent, frontAgent)) * 1000 - 4;
+    let breakTimeCheck = agent.speed*1000*timeStep * reactionTime + (Math.pow(frontAgent.speed*1000*timeStep, 2) / -3);
+    let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (2*distCheck - breakTimeCheck));
+    let speed = maxDe * reactionTime + sqrt;
+
+    if (isNaN(speed) || speed < 0) {
+        speed = 0;
+    }
+
+    return speed / 1000 / timeStep;
+}
+
+const ControlledJunctionSpeed = (agent, graph) => {
+    let maxDe = -3.5;
+    let reactionTime = 1.1;
+    const targetJunction = agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction;
+    let junc = graph.junctions[targetJunction];
+    let distCheck = geoForm.Distance(agent.currentLat, agent.currentLong, junc.coordinates[1], junc.coordinates[0]) * 1000 - 5;
+    let breakTimeCheck = agent.speed*1000*timeStep * reactionTime;
+    let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (3*distCheck - breakTimeCheck));
+    let speed = maxDe * reactionTime + sqrt;
+
+    if (isNaN(speed) || speed < 0) {
+        speed = 0;
+    }
+
+    return speed / 1000 / timeStep;
+}
+
 const UpdateAgents = graph => {
     agents.forEach((agent) => {
-        const speed = 2/1000;
 
-        const [lat, long] = geoForm.WalkPosition(agent.currentLat, agent.currentLong, agent.segmentBearing, speed);
+        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent));
+
+        if (agent.nextRoad.func != agent.currentRoad.func) {
+            agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent), ControlledJunctionSpeed(agent, graph));
+        }
+
+        
+
+        const [lat, long] = geoForm.WalkPosition(agent.currentLat, agent.currentLong, agent.segmentBearing, agent.speed);
         agent.currentLat = lat;
         agent.currentLong = long;
-        agent.segmentDistAcc += speed;
+        agent.segmentDistAcc += agent.speed;
 
         if (agent.segmentDistAcc >= agent.segmentDist) {
             agent.segmentDistAcc -= agent.segmentDist
@@ -112,25 +224,16 @@ const UpdateAgents = graph => {
             const nextRoad = agent.forwards ? (agent.segmentIndex + 1 >= coords.length) : agent.segmentIndex == 0;
 
             if (nextRoad) {
-                const nextJunction = agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction;
-                const junction = graph.junctions[nextJunction];
+            
+                let queue = agent.forwards ? agent.currentRoad.forwardTrafficQueue : agent.currentRoad.backwardTrafficQueue;
+                queue.splice(queue.indexOf(agent), 1);
 
-                if (junction.roads.length > 1) {
-                    const avoidIndex = junction.roads.indexOf(agent.currentRoad);
+                const currentJunction = graph.junctions[agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction];
+                agent.forwards = agent.currentRoad.startJunction.identifier == currentJunction.identifier;
+                agent.currentRoad = agent.nextRoad;
 
-                    let rand = 0
-                    do {
-                        rand = Math.floor(Math.random() * (junction.roads.length));
-                    } while(rand == avoidIndex);
-
-                    agent.currentRoad = junction.roads[rand];
-                } else {
-                    agent.currentRoad = junction.roads[0];
-                }
-                
                 // Sometimes the data is wrong, and the startJunction is actually the endJunction,
                 // so we double check with a distance check
-                agent.forwards = agent.currentRoad.startJunction.identifier == junction.identifier;
 
                 const checkCoords = agent.forwards ? agent.currentRoad.coordinates[0] : agent.currentRoad.coordinates[agent.currentRoad.coordinates.length - 1];
 
@@ -143,6 +246,24 @@ const UpdateAgents = graph => {
 
                 coords = agent.currentRoad.coordinates;
                 agent.segmentIndex = agent.forwards ? 0 : coords.length - 1;
+                queue = agent.forwards ? agent.currentRoad.forwardTrafficQueue : agent.currentRoad.backwardTrafficQueue;
+                queue.push(agent);
+
+                const nextJunction = agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction;
+                const junction = graph.junctions[nextJunction];
+
+                if (junction.roads.length > 1) {
+                    const avoidIndex = junction.roads.indexOf(agent.currentRoad);
+
+                    let rand = 0
+                    do {
+                        rand = Math.floor(Math.random() * (junction.roads.length));
+                    } while(rand == avoidIndex);
+
+                    agent.nextRoad = junction.roads[rand];
+                } else {
+                    agent.nextRoad = junction.roads[0];
+                }
             }
 
             const index = agent.forwards ? agent.segmentIndex + 1 : agent.segmentIndex - 1;
@@ -171,10 +292,10 @@ const moveMarker = graph => {
         console.log(`Forwards: ${forwards}\n SegmentIndex: ${segmentIndex}\n SegmentDist: ${segmentDist}\n SegmentDistAcc: ${segmentDistAcc}`)
         const speed = 2/1000;
 
-        const [lat, long] = geoForm.WalkPosition(currentLat, currentLong, segmentBearing, speed);
+        const [lat, long] = geoForm.WalkPosition(currentLat, currentLong, segmentBearing, agent.speed);
         currentLat = lat;
         currentLong = long;
-        segmentDistAcc += speed;
+        segmentDistAcc += agent.speed;
 
         if (segmentDistAcc >= segmentDist) {
             segmentDistAcc -= segmentDist
