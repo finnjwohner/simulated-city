@@ -29,6 +29,7 @@ async function getGeoJson() {
     InitialiseAgents(graph);
     agents[0].frontAgent = agents[1];
     agents[1].frontAgent = agents[0];
+    UpdateJunctionSignals(graph);
     setInterval(() => {
         UpdateAgents(graph);
     }, timeStep)
@@ -117,20 +118,8 @@ removeAgentBtn.addEventListener('click', () => {
     map.removeLayer(agent.marker);
 })
 
-const distanceRequiredToStop = speedMph => {
-    return 0.015 * speedMph * speedMph;
-}
-
 const MphToMps = speedMph => {
     return speedMph / 2.237;
-}
-
-const AgentSpeedToMph = agentSpeed => {
-    return agentSpeed * timeStep * 2.237 * 1000;
-}
-
-const MphToAgentSpeed = speedMph => {
-    return MphToMps(speedMph) / timeStep / 1000;
 }
 
 const DistBetweenAgents = (agent1, agent2) => {
@@ -199,6 +188,124 @@ const ControlledJunctionSpeed = (agent, graph) => {
     return speed / 1000 / timeStep;
 }
 
+const UpdateJunctionSignals = graph => {
+    for(const [key, value] of Object.entries(graph.junctions)) {
+        FindRoadPairs(value);
+    }
+}
+
+const FindRoadPairs = junction => {
+    console.log(`\nAttempting to find road pairs for junction ${junction.identifier}`);
+    // 1, Check length of roads array is greater than 2, if not, always green
+    // 2, Check road names
+    // 3, If <= 2 roads remain, match up
+    // 4, If > 2 roads remain, check bearings of roads and match most similair until (3) is reached
+
+    // 1
+    if (junction.roads.length <= 2) {
+        console.log(`2 Roads found, pairing up and returning.`);
+        junction.roadPairs = [junction.roads];
+        return;
+    }
+
+    // 2
+    for(let i = 0; i < junction.roads.length - 1; i++) {
+        for(let j = i + 1; j < junction.roads.length; j++) {
+            if (junction.roads[i].roadName == junction.roads[j].roadName) {
+                console.log(`Twinned named roads found, pairing (${junction.roads[i].roadName} and ${junction.roads[j].roadName}).`);
+                junction.roadPairs.push([junction.roads[i], junction.roads[j]]);
+            }
+        }
+    }
+
+    // Find num/&objects of roads remaining
+    let roadsRemaining = [];
+    junction.roads.forEach(road => {
+        let found = false;
+        junction.roadPairs.forEach(pair => {
+            pair.forEach(pairedRoad => {
+                if (road.identifier == pairedRoad.identifier) {
+                    found = true;
+                }
+            })
+        })
+
+        if (!found) {
+            roadsRemaining.push(road);
+        }
+    })
+
+    if(roadsRemaining.length == 0) {
+        console.log('No more roads to pair, returning!');
+        return;
+    }
+
+    console.log(`${roadsRemaining.length} roads remain to be paired.`);
+
+    // 3
+    if(roadsRemaining.length <= 2) {
+        console.log(`Pairing the remaining roads together.`);
+        junction.roadPairs.push(roadsRemaining);
+        return;
+    }
+
+    // 4
+    RoadPairBearingMatch(junction, roadsRemaining);
+}
+
+const RoadPairBearingMatch = (junction, roads) => {
+    for(let i = 0; i < roads.length - 1; i++) {
+        const bearing1 = FindRelativeRoadBearing(junction, roads[i]);
+        console.log(`Bearing of ${roads[i].roadName} = ${bearing1}`);
+        let closestBearing = Infinity;
+        let closestRoadIndex = null;
+        for (let j = i + 1; j < roads.length; j++) {
+            const bearing2 = FindRelativeRoadBearing(junction, roads[j]);
+            console.log(`Bearing of ${roads[j].roadName} = ${bearing2}`);
+
+            if(Math.abs(bearing1 - bearing2) < closestBearing) {
+                closestBearing = Math.abs(bearing1 - bearing2);
+                closestRoadIndex = j;
+            } 
+        }
+
+        console.log(`Matching ${roads[i].roadName} and ${roads[closestRoadIndex].roadName} based on their bearings.`);
+        junction.roadPairs.push([roads[i], roads[closestRoadIndex]]);
+        roads.splice(closestRoadIndex, 1);
+        roads.splice(i, 1);
+
+        i--;
+    }
+
+    if (roads.length == 1) {
+        console.log(`As there is only 1 road remaining, pairing it alone.`);
+        junction.roadPairs.push(roads);
+    }
+}
+
+const FindRelativeRoadBearing = (junction, road) => {
+    const forwards = road.startJunction == junction.identifier;
+
+    const coords = [];
+
+    if (forwards) {
+        coords.push(road.coordinates[0]);
+        coords.push(road.coordinates[1]);
+    }
+    else {
+        coords.push(road.coordinates[road.coordinates.length - 1]);
+        coords.push(road.coordinates[road.coordinates.length - 2]);
+    }
+
+    let bearing = geoForm.Bearing(coords[0][1], coords[0][0], coords[1][1], coords[1][0]);
+
+    if (bearing > 180) {
+        bearing = 360 - bearing;
+    }
+
+    return bearing;
+}
+
 const UpdateAgents = graph => {
     agents.forEach((agent) => {
 
@@ -207,8 +314,6 @@ const UpdateAgents = graph => {
         if (agent.nextRoad.func != agent.currentRoad.func) {
             agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent), ControlledJunctionSpeed(agent, graph));
         }
-
-        
 
         const [lat, long] = geoForm.WalkPosition(agent.currentLat, agent.currentLong, agent.segmentBearing, agent.speed);
         agent.currentLat = lat;
