@@ -177,6 +177,15 @@ const ControlledJunctionSpeed = (agent, graph) => {
     const targetJunction = agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction;
     let junc = graph.junctions[targetJunction];
     let distCheck = geoForm.Distance(agent.currentLat, agent.currentLong, junc.coordinates[1], junc.coordinates[0]) * 1000 - 5;
+
+    if (junc.roadPairs[junc.greenRoadPairIndex].includes(agent.nextRoad)) {
+        console.log('Agent has green light');
+        return 9999999;
+    }
+    else {
+        console.log('Agent has red light');
+    }
+
     let breakTimeCheck = agent.speed*1000*timeStep * reactionTime;
     let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (3*distCheck - breakTimeCheck));
     let speed = maxDe * reactionTime + sqrt;
@@ -205,6 +214,9 @@ const FindRoadPairs = junction => {
     if (junction.roads.length <= 2) {
         console.log(`2 Roads found, pairing up and returning.`);
         junction.roadPairs = [junction.roads];
+        setInterval(() => {
+            SwapGreenPairs(junction);
+        }, 30000);
         return;
     }
 
@@ -237,6 +249,9 @@ const FindRoadPairs = junction => {
 
     if(roadsRemaining.length == 0) {
         console.log('No more roads to pair, returning!');
+        setInterval(() => {
+            SwapGreenPairs(junction);
+        }, 30000);
         return;
     }
 
@@ -246,11 +261,23 @@ const FindRoadPairs = junction => {
     if(roadsRemaining.length <= 2) {
         console.log(`Pairing the remaining roads together.`);
         junction.roadPairs.push(roadsRemaining);
+        setInterval(() => {
+            SwapGreenPairs(junction);
+        }, 30000);
         return;
     }
 
     // 4
     RoadPairBearingMatch(junction, roadsRemaining);
+
+    setInterval(() => {
+        SwapGreenPairs(junction);
+    }, 30000);
+}
+
+const SwapGreenPairs = junction => {
+    junction.greenRoadPairIndex = (junction.greenRoadPairIndex + 1) % junction.roadPairs.length;
+    console.log(`Junction ${junction.identifier} now has green road pair index ${junction.greenRoadPairIndex}`);
 }
 
 const RoadPairBearingMatch = (junction, roads) => {

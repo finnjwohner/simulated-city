@@ -3,7 +3,7 @@ export class Junction {
         this.identifier = identifier;
         this.coordinates = coordinates;
         this.roads = [];
-        this.greenlitRoads = [];
+        this.greenRoadPairIndex = 0;
         this.roadPairs = [];
     }
 
