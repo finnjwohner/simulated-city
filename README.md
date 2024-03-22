@@ -15,3 +15,7 @@ A web-based spatial agent based modelling system for urban transport. Ideally th
 4. Run `npm run convertCoords` in the repo root directory
 5. Run `npm run start`
 6. Navigate to localhost:3000
+
+## Next Steps (Note to self)
+
+- Allow for queue target find to check agent's next road.
