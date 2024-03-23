@@ -137,20 +137,60 @@ const DesiredAgentSpeed = (agent) => {
     return agent.speed + (speed / timeStep / 1000);
 }
 
-const FrontAgent = agent => {
+const FrontAgent = (agent, graph) => {
     let queue = agent.forwards ? agent.currentRoad.forwardTrafficQueue : agent.currentRoad.backwardTrafficQueue;
 
-    let index = queue.indexOf(agent);
-    if (index == 0) {
+    let frontAgent = CheckQueuePosFront(agent, queue);
+
+    if (frontAgent == null) {
+        const nextJuncIdentifier = agent.forwards ? agent.currentRoad.startJunction : agent.currentRoad.endJunction;
+        const nextJunc = graph.junctions[nextJuncIdentifier];
+
+        queue = IsForwards(agent, nextJunc, agent.nextRoad) ? agent.nextRoad.forwardTrafficQueue : agent.nextRoad.backwardTrafficQueue;
+        frontAgent = CheckQueuePosFront(agent, queue);
+    }
+
+    return frontAgent;
+}
+
+const CheckQueuePosFront = (agent, queue) => {
+    if (queue.length == 0) {
         return null;
+    }
+
+    const index = queue.indexOf(agent);
+
+    if(index == 0) {
+        return null;
+    }
+    else if (index == -1) {
+        return queue[queue.length - 1];
     }
     else {
         return queue[index - 1];
     }
 }
 
-const ControlledSpeed = agent => {
-    const frontAgent = FrontAgent(agent);
+const IsForwards = (agent, startJunction, road) => {
+    let forwards = startJunction.identifier == road.startJunction.identifier;
+
+    // Sometimes the data is wrong, and the startJunction is actually the endJunction,
+    // so we double check with a distance check
+
+    const checkCoords = forwards ? road.coordinates[0] : road.coordinates[road.coordinates.length - 1];
+
+    let dst = geoForm.Distance(startJunction.coordinates[1], startJunction.coordinates[0], checkCoords[1], checkCoords[0]);
+    dst = Math.abs(dst - agent.segmentDistAcc/1000);
+    
+    if(dst > 0.01) {
+        forwards = !forwards;
+    }
+
+    return forwards;
+}
+
+const ControlledSpeed = (agent, graph) => {
+    const frontAgent = FrontAgent(agent, graph);
 
     if (frontAgent == null) {
         return 999999;
@@ -179,11 +219,7 @@ const ControlledJunctionSpeed = (agent, graph) => {
     let distCheck = geoForm.Distance(agent.currentLat, agent.currentLong, junc.coordinates[1], junc.coordinates[0]) * 1000 - 5;
 
     if (junc.roadPairs[junc.greenRoadPairIndex].includes(agent.nextRoad)) {
-        console.log('Agent has green light');
         return 9999999;
-    }
-    else {
-        console.log('Agent has red light');
     }
 
     let breakTimeCheck = agent.speed*1000*timeStep * reactionTime;
@@ -336,10 +372,10 @@ const FindRelativeRoadBearing = (junction, road) => {
 const UpdateAgents = graph => {
     agents.forEach((agent) => {
 
-        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent));
+        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph));
 
         if (agent.nextRoad.func != agent.currentRoad.func) {
-            agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent), ControlledJunctionSpeed(agent, graph));
+            agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph));
         }
 
         const [lat, long] = geoForm.WalkPosition(agent.currentLat, agent.currentLong, agent.segmentBearing, agent.speed);
@@ -361,20 +397,8 @@ const UpdateAgents = graph => {
                 queue.splice(queue.indexOf(agent), 1);
 
                 const currentJunction = graph.junctions[agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction];
-                agent.forwards = agent.currentRoad.startJunction.identifier == currentJunction.identifier;
+                agent.forwards = IsForwards(agent, currentJunction, agent.nextRoad);
                 agent.currentRoad = agent.nextRoad;
-
-                // Sometimes the data is wrong, and the startJunction is actually the endJunction,
-                // so we double check with a distance check
-
-                const checkCoords = agent.forwards ? agent.currentRoad.coordinates[0] : agent.currentRoad.coordinates[agent.currentRoad.coordinates.length - 1];
-
-                let dst = geoForm.Distance(agent.currentLat, agent.currentLong, checkCoords[1], checkCoords[0]);
-                dst = Math.abs(dst - agent.segmentDistAcc/1000);
-                
-                if(dst > 0.01) {
-                    agent.forwards = !agent.forwards;
-                }
 
                 coords = agent.currentRoad.coordinates;
                 agent.segmentIndex = agent.forwards ? 0 : coords.length - 1;
