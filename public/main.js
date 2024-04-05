@@ -8,6 +8,12 @@ const removeAgentBtn = document.querySelector('#remove-agent-btn');
 
 const map = L.map('map', {zoomControl: false, minZoom: 16, maxZoom: 19}).setView([55.9581957731748, -3.1314852713325], 16);
 
+map.on('drag', () => {
+    for(let i = 0; i < agents.length; i++) {
+        AdjustMarkerInfoPos(agents[i]);
+    }
+})
+
 let roadLinks = null;
 let roadNodes = null;
 let graph = null;
@@ -48,13 +54,52 @@ let segmentBearing = 0;
 let marker = null;
 let forwards = true;
 
-const numAgents = 2;
+let numAgents = 2;
 const agents = [];
 
 const InitialiseAgents = graph => {
     for(let i = 0; i < numAgents; i++) {
         AddAgent(graph, i);
     }
+}
+
+let selectedAgent = null;
+
+const CreateMarkerInfo = () => {
+    const markerInfo = document.querySelector('#marker-info-clone');
+    const markerInfoClone = markerInfo.cloneNode(true);
+    markerInfoClone.removeAttribute('id');
+
+    return markerInfoClone;
+}
+
+const ClickAgent = (agent, e) => {
+    if (agent.markerInfo == null) {
+        console.log('Adding');
+        agent.markerInfo = CreateMarkerInfo();
+        document.body.appendChild(agent.markerInfo);
+        agent.markerInfo.children[0].innerHTML = `Agent ${agent.index + 1}`;
+
+        AdjustMarkerInfoPos(agent);
+    } else {
+        agent.markerInfo.remove();
+        console.log('Removing');
+        agent.markerInfo = null;
+    }
+}
+
+const AdjustMarkerInfoPos = agent => {
+    if (agent.markerInfo == null) {
+        return;
+    }
+
+    const {left, top} = agent.marker.getElement().getBoundingClientRect();
+    const {width, height} = agent.markerInfo.getBoundingClientRect();
+    agent.markerInfo.style.left = `${left - width/2.3}px`;
+    agent.markerInfo.style.top = `${top - height - 8}px`;
+
+    const mph = Math.round(AgentSpeedToMph(agent.speed));
+    agent.markerInfo.children[1].innerHTML = `${mph} Miles Per Hour`;
 }
 
 const AddAgent = (graph, index) => {
@@ -65,11 +110,12 @@ const AddAgent = (graph, index) => {
     const road = graph.roads[keys[keys.length * Math.random() << 0]];
 
     agent.currentRoad = road;
+    agent.index = index;
     let queue = agent.forwards ? agent.currentRoad.forwardTrafficQueue : agent.currentRoad.backwardTrafficQueue;
     queue.push(agent);
     agent.currentLat = road.coordinates[0][1];
     agent.currentLong = road.coordinates[0][0];
-    agent.marker = L.marker([road.coordinates[0][1], road.coordinates[0][0]]).addTo(map);
+    agent.marker = L.marker([road.coordinates[0][1], road.coordinates[0][0]]).on('click', (e) => ClickAgent(agent, e)).addTo(map);
     agent.segmentIndex = agent.forwards ? 0 : road.coordinates.length - 1;
     agent.desiredSpeed = 80;
 
@@ -104,6 +150,7 @@ addAgentBtn.addEventListener('click', () => {
         return;
     }
 
+    numAgents++;
     AddAgent(graph, agents.length);
 });
 
@@ -112,6 +159,7 @@ removeAgentBtn.addEventListener('click', () => {
         return;
     }
 
+    numAgents--;
     agentDisplay.removeChild(agentDisplay.lastChild);
     const agent = agents.pop();
     map.removeLayer(agent.marker);
@@ -208,8 +256,6 @@ const UpdateAgents = graph => {
             agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent), ControlledJunctionSpeed(agent, graph));
         }
 
-        
-
         const [lat, long] = geoForm.WalkPosition(agent.currentLat, agent.currentLong, agent.segmentBearing, agent.speed);
         agent.currentLat = lat;
         agent.currentLong = long;
@@ -277,6 +323,7 @@ const UpdateAgents = graph => {
         }
 
         agent.marker.setLatLng(L.latLng(agent.currentLat, agent.currentLong));
+        AdjustMarkerInfoPos(agent);
     })
 }
 
