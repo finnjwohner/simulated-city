@@ -3,6 +3,8 @@ export class Junction {
         this.identifier = identifier;
         this.coordinates = coordinates;
         this.roads = [];
+        this.greenRoadPairIndex = 0;
+        this.roadPairs = [];
     }
 
     addRoad(road) {
@@ -11,8 +13,9 @@ export class Junction {
 }
 
 export class Road {
-    constructor(identifier, startJunction, endJunction, coordinates, func, length) {
+    constructor(identifier, startJunction, endJunction, coordinates, func, roadName, length) {
         this.identifier = identifier;
+        this.roadName = roadName;
         this.startJunction = startJunction;
         this.endJunction = endJunction;
         this.coordinates = coordinates;
@@ -42,8 +45,9 @@ export const createGraph = (roadLinks, roadNodes) => {
         const coordinates = feature.geometry.coordinates;
         const func = feature.properties.function;
         const length = feature.properties.length;
+        const roadName = feature.properties.name1;
 
-        const road = new Road(identifier, startJunction, endJunction, coordinates, func, length);
+        const road = new Road(identifier, startJunction, endJunction, coordinates, func, roadName, length);
         roadDict[identifier] = road;
 
         junctionDict[startJunction].addRoad(road);
