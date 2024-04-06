@@ -5,10 +5,20 @@ export class Junction {
         this.roads = [];
         this.greenRoadPairIndex = 0;
         this.roadPairs = [];
+        this.lights = [];
     }
 
     addRoad(road) {
         this.roads.push(road);
+    }
+}
+
+export class Light {
+    constructor(coordinates, marker, div, road) {
+        this.coordinates = coordinates;
+        this.marker = marker;
+        this.div = div;
+        this.road = road;
     }
 }
 
