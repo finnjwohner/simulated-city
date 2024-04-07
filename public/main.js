@@ -387,7 +387,7 @@ const ControlledSpeed = (agent, graph) => {
         return 999999;
     }
 
-    let maxDe = -1.5;
+    let maxDe = -3.5;
     let reactionTime = 1.1;
 
     let distCheck = (DistBetweenAgents(agent, frontAgent)) * 1000 - 4;
@@ -398,6 +398,129 @@ const ControlledSpeed = (agent, graph) => {
     if (isNaN(speed) || speed < 0) {
         speed = 0;
     }
+
+    return speed / 1000 / timeStep;
+}
+
+const CornerSpeed = (agent, graph, segmentAddition) => {
+    const forwardSegmentCan = agent.forwards && agent.segmentIndex < agent.currentRoad.coordinates.length - 2
+    const backwardSegmentCan = !agent.forwards && agent.segmentIndex > 1;
+    const segmentCorner = forwardSegmentCan || backwardSegmentCan;
+
+    if (!segmentCorner && (agent.nextRoad == undefined || agent.nextRoad == null)) {
+        return 999999;
+    }
+
+    let currentSegmentBearing = 0;
+    let nextSegmentBearing = 0;
+    let dist = 0;
+    let reactionTime = 1.1;
+
+    if (segmentCorner) {
+        const c = agent.currentRoad.coordinates;
+        const i = agent.segmentIndex;
+        currentSegmentBearing = geoForm.Bearing(c[i][1], c[i][0], c[agent.forwards ? i+1 : i-1][1], c[agent.forwards ? i+1 : i-1][0]);
+        nextSegmentBearing = geoForm.Bearing(c[agent.forwards ? i+1 : i-1][1], c[agent.forwards ? i+1 : i-1][0], c[agent.forwards ? i+2 : i-2][1], c[agent.forwards ? i+2 : i-2][0]);
+        dist = geoForm.Distance(agent.currentLat, agent.currentLong, c[agent.forwards ? i+1 : i-1][1], c[agent.forwards ? i+1 : i-1][0]) * 1000;
+    }
+    else {
+        const c = agent.currentRoad.coordinates;
+        const i = agent.segmentIndex;
+
+        currentSegmentBearing = geoForm.Bearing(c[i][1], c[i][0], c[agent.forwards ? i+1 : i-1][1], c[agent.forwards ? i+1 : i-1][0]);
+        
+        const nextJunction = graph.junctions[agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction];
+        const nextForward = IsForwards(agent, nextJunction, agent.nextRoad);
+        const nC = agent.nextRoad.coordinates;
+        const nI = nextForward ? 0 : nC.length - 1;
+
+        nextSegmentBearing = geoForm.Bearing(nC[nI][1], nC[nI][0], nC[nextForward ? nI + 1 : nI - 1][1], nC[nextForward ? nI + 1 : nI - 1][0]);
+
+        dist = geoForm.Distance(agent.currentLat, agent.currentLong, nC[nI][1], nC[nI][0]) * 1000;
+    }
+
+    if(currentSegmentBearing > 180) {
+        currentSegmentBearing = 360 - currentSegmentBearing;
+    }
+
+    if(nextSegmentBearing > 180) {
+        nextSegmentBearing = 360 - nextSegmentBearing;
+    }
+
+    const diff = Math.abs(currentSegmentBearing - nextSegmentBearing);
+    const t = (diff - 90) / (0 - 90);
+    const maxCornerSpeed = 20 + (80 - 20) * t;
+    const maxDe = -3.5;
+
+    let breakTimeCheck = agent.speed*1000*timeStep * reactionTime + (Math.pow(maxCornerSpeed / 2.237, 2) / -3);
+    let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (10*dist - breakTimeCheck));
+    let speed = maxDe * reactionTime + sqrt;
+
+    speed = speed / 1000 / timeStep;
+
+    const secondSpeed = CornerSpeedLookAhead(agent, graph, 1);
+    const thirdSpeed = CornerSpeedLookAhead(agent, graph, 2);
+
+    return Math.min(speed, secondSpeed, thirdSpeed);
+}
+
+const CornerSpeedLookAhead = (agent, graph, segmentAddition) => {
+
+    const forwardSegmentCan = agent.forwards && agent.segmentIndex < agent.currentRoad.coordinates.length - (2 + segmentAddition);
+    const backwardSegmentCan = !agent.forwards && agent.segmentIndex > (1 + segmentAddition);
+    const segmentCorner = forwardSegmentCan || backwardSegmentCan;
+
+    if (!segmentCorner && (agent.nextRoad == undefined || agent.nextRoad == null)) {
+        return 999999;
+    }
+
+    let currentSegmentBearing = 0;
+    let nextSegmentBearing = 0;
+    let dist = 0;
+    let reactionTime = 1.1;
+
+    if (segmentCorner) {
+        const c = agent.currentRoad.coordinates;
+        const i = agent.forwards ? agent.segmentIndex + segmentAddition : agent.segmentIndex - segmentAddition;
+        currentSegmentBearing = geoForm.Bearing(c[i][1], c[i][0], c[agent.forwards ? i+1 : i-1][1], c[agent.forwards ? i+1 : i-1][0]);
+        nextSegmentBearing = geoForm.Bearing(c[agent.forwards ? i+1 : i-1][1], c[agent.forwards ? i+1 : i-1][0], c[agent.forwards ? i+2 : i-2][1], c[agent.forwards ? i+2 : i-2][0]);
+        dist = geoForm.Distance(agent.currentLat, agent.currentLong, c[agent.forwards ? i+1 : i-1][1], c[agent.forwards ? i+1 : i-1][0]) * 1000;
+    }
+    else if (agent.links.length > 1){
+        const c = agent.currentRoad.coordinates;
+        const i = agent.forwards ? 0 : agent.currentRoad.coordinates.length - 2;
+
+        currentSegmentBearing = geoForm.Bearing(c[i][1], c[i][0], c[agent.forwards ? i+1 : i-1][1], c[agent.forwards ? i+1 : i-1][0]);
+    
+        const nextJunction = graph.junctions[agent.links[1]];
+        const nextForward = IsForwards(agent, nextJunction, agent.nextRoad);
+        const nC = agent.nextRoad.coordinates;
+        const nI = nextForward ? 0 : nC.length - 1;
+
+        nextSegmentBearing = geoForm.Bearing(nC[nI][1], nC[nI][0], nC[nextForward ? nI + 1 : nI - 1][1], nC[nextForward ? nI + 1 : nI - 1][0]);
+
+        dist = geoForm.Distance(agent.currentLat, agent.currentLong, nC[nI][1], nC[nI][0]) * 1000;
+    }
+    else {
+        return 999999;
+    }
+
+    if(currentSegmentBearing > 180) {
+        currentSegmentBearing = 360 - currentSegmentBearing;
+    }
+
+    if(nextSegmentBearing > 180) {
+        nextSegmentBearing = 360 - nextSegmentBearing;
+    }
+
+    const diff = Math.abs(currentSegmentBearing - nextSegmentBearing);
+    const t = (diff - 90) / (0 - 90);
+    const maxCornerSpeed = 20 + (80 - 20) * t;
+    const maxDe = -3.5;
+
+    let breakTimeCheck = agent.speed*1000*timeStep * reactionTime + (Math.pow(maxCornerSpeed / 2.237, 2) / -3);
+    let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (10*dist - breakTimeCheck));
+    let speed = maxDe * reactionTime + sqrt;
 
     return speed / 1000 / timeStep;
 }
@@ -535,8 +658,6 @@ const FindRoadPairs = junction => {
 }
 
 const AddTrafficLights = junction => {
-    console.log(junction.roadPairs);
-
     for(let i = 0; i < junction.roadPairs.length; i++) {
         for (let j = 0; j < junction.roadPairs[i].length; j++) {
             const road = junction.roadPairs[i][j];
@@ -565,12 +686,15 @@ const AddTrafficLights = junction => {
             document.body.appendChild(trafficDiv);
 
             const light = new network.Light(latLng, trafficMarker, trafficDiv, road);
+            trafficDiv.addEventListener('mousedown', () => ClickTrafficLight(junction, light));
 
             junction.lights.push(light);
         }
     }
+}
 
-    
+const ClickTrafficLight = (junction, light) => {
+    console.log(junction.identifier);
 }
 
 const CloneTrafficLight = () => {
@@ -667,8 +791,8 @@ const FindRelativeRoadBearing = (junction, road) => {
 const UpdateAgents = graph => {
     agents.forEach((agent) => {
 
-        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph));
-
+        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph), CornerSpeed(agent, graph));
+        CornerSpeed(agent, graph);
         /*
         if (agent.nextRoad != null && agent.nextRoad.func != agent.currentRoad.func) {
             agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph));
