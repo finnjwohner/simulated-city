@@ -647,7 +647,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const GetEstimate = async (startLatLng : string, endLatLng : string) => {
-    const uri : string = `https://maps.googleapis.com/maps/api/distancematrix/json?destinations=${encodeURIComponent(endLatLng)}&origins=${encodeURIComponent(startLatLng)}&key=AIzaSyDUERRVmUclzOTDnlsoLrW9ne_MF7aerpU`;
+    const uri : string = `https://maps.googleapis.com/maps/api/distancematrix/json?destinations=${encodeURIComponent(endLatLng)}&origins=${encodeURIComponent(startLatLng)}&key=xxx`;
 
     try {
         const response : any = await API<any>(uri);
