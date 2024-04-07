@@ -56,6 +56,7 @@ aside {
     width: 350px;
     background-color: rgb(37, 37, 37);
     border-right: 2px solid rgb(48, 48, 48);
+    overflow-y: scroll;
 }
 
 button {
@@ -135,6 +136,7 @@ button.square {
 
 .traffic-light-info {
     z-index: -1;
+    pointer-events: none;
     display: flex;
     flex-direction: column-reverse;
     justify-content: center;
@@ -167,4 +169,26 @@ button.square {
 
 .red {
     background-color: red;
+}
+
+.junction-info {
+    pointer-events: all;
+    z-index: -1;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 100%;
+    background-color: none;
+    border: 5px solid white;
+    position: absolute;
+    top: 0;
+    left: 0;
+    opacity: 0;
+}
+
+.junction-info:hover {
+    opacity: 1;
+}
+
+#junction-info-clone {
+    display: none;
 }

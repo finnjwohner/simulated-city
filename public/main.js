@@ -2,12 +2,14 @@ import * as network from './networkGraph.js';
 import * as geoForm from './geoFormulas.js';
 import Agent from './agent.js';
 import * as Dijkstra from './dijkstra.js';
+import trafficJunctions from './trafficJunctions.js';
+import originDestinations from './originDestinations.js';
 
 const agentDisplay = document.querySelector('.agent-display');
 const addAgentBtn = document.querySelector('#add-agent-btn');
 const removeAgentBtn = document.querySelector('#remove-agent-btn');
 
-const map = L.map('map', {zoomControl: false, minZoom: 16, maxZoom: 19}).setView([55.9581957731748, -3.1314852713325], 16);
+const map = L.map('map', {zoomControl: false, minZoom: 14, maxZoom: 19}).setView([55.9581957731748, -3.1314852713325], 16);
 
 map.on('zoom', e => {
     const zoom = map.getZoom();
@@ -15,6 +17,12 @@ map.on('zoom', e => {
     let scale = 1;
     
     switch(zoom) {
+        case 14:
+            scale = 0.1;
+            break;
+        case 15:
+            scale = 0.1;
+            break;
         case 16:
             scale = 0.2;
             break;
@@ -35,31 +43,32 @@ map.on('zoom', e => {
         trafficLights[i].style.scale = scale;
     }
 
-    const junctions = Object.keys(graph.junctions);
-
-    for(let i = 0; i < junctions.length; i++) {
-        for (let j = 0; j < graph.junctions[junctions[i]].lights.length; j++) {
-            const light = graph.junctions[junctions[i]].lights[j];
-            AdjustTrafficLightPos(light);
-        }
-    }
+    Object.values(graph.junctions).forEach(junction => {
+        AdjustJunction(junction);
+    })
 })
 
 map.on('resize', e => {
-    const junctions = Object.keys(graph.junctions);
-
-    for(let i = 0; i < junctions.length; i++) {
-        for (let j = 0; j < graph.junctions[junctions[i]].lights.length; j++) {
-            const light = graph.junctions[junctions[i]].lights[j];
-            AdjustTrafficLightPos(light);
-        }
-    }
+    Object.values(graph.junctions).forEach(junction => {
+        AdjustJunction(junction);
+    })
 })
 
 const AdjustTrafficLightPos = trafficLight => {
     const {left, top} = trafficLight.marker.getElement().getBoundingClientRect();
     trafficLight.div.style.left = `${left}px`;
     trafficLight.div.style.top = `${top}px`;
+}
+
+const AdjustJunction = junction => {
+    const {left, top, height} = junction.marker.getElement().getBoundingClientRect();
+
+    junction.markerDiv.style.left = `${left}px`;
+    junction.markerDiv.style.top = `${top + height / 2}px`;
+
+    for(let i = 0; i < junction.lights.length; i++) {
+        AdjustTrafficLightPos(junction.lights[i]);
+    }
 }
 
 let roadLinks = null;
@@ -71,15 +80,21 @@ map.on('drag', () => {
         AdjustMarkerInfoPos(agents[i]);
     }
 
-    const junctions = Object.keys(graph.junctions);
-
-    for(let i = 0; i < junctions.length; i++) {
-        for (let j = 0; j < graph.junctions[junctions[i]].lights.length; j++) {
-            const light = graph.junctions[junctions[i]].lights[j];
-            AdjustTrafficLightPos(light);
-        }
-    }
+    Object.values(graph.junctions).forEach(junction => {
+        AdjustJunction(junction);
+    })
 })
+
+const SpitNodes = graph => {
+    let spitter = {};
+    
+    const nodes = Object.keys(graph.junctions);
+
+    nodes.forEach(node => {
+        const coords = graph.junctions[node].coordinates;
+        spitter[node] = `${coords[1]}, ${coords[0]}`;
+    })
+}
 
 const timeStep = 1000/30;
 
@@ -97,8 +112,6 @@ async function getGeoJson() {
 
     InitDijkstra(graph);
     InitialiseAgents(graph);
-    agents[0].frontAgent = agents[1];
-    agents[1].frontAgent = agents[0];
     UpdateJunctionSignals(graph);
     setInterval(() => {
         UpdateAgents(graph);
@@ -107,7 +120,7 @@ async function getGeoJson() {
 
 getGeoJson();
 
-let numAgents = 2;
+let numAgents = 500;
 const agents = [];
 
 const InitDijkstra = graph => {
@@ -195,17 +208,33 @@ const AgentSpeedToMph = agentSpeed => {
 const AddAgent = (graph, index) => {
     const agent = new Agent();
 
-    // Set junction to start on (random for now);
-    const nodeKeys = Object.keys(graph.junctions);
-    const startNode = graph.junctions[nodeKeys[nodeKeys.length * Math.random() << 0]];
-    
-    // Set junction to end on (random for now);
+    const random = false;
+    let startNode = null;
     let endNode = null;
-    do {
-        endNode = graph.junctions[nodeKeys[nodeKeys.length * Math.random() << 0]];
-    } while(endNode == startNode);
 
-    agent.links = graph.weightedGraph.Dijkstra(startNode.identifier, endNode.identifier);
+    if(!random) {
+        // Pick random originDestination index
+        do {
+            const oD = originDestinations[Math.floor(Math.random()*originDestinations.length)];
+            startNode = graph.junctions[oD.startNode];
+            endNode = graph.junctions[oD.endNode];
+            agent.links = graph.weightedGraph.Dijkstra(startNode.identifier, endNode.identifier);
+        } while(agent.links.length <= 1);
+        
+    }
+    else {
+        do {
+            //Set junction to start on (random);
+            const nodeKeys = Object.keys(graph.junctions);
+            startNode = graph.junctions[nodeKeys[nodeKeys.length * Math.random() << 0]];
+
+            // Set junction to end on (random);
+            do {
+                endNode = graph.junctions[nodeKeys[nodeKeys.length * Math.random() << 0]];
+            } while(endNode == startNode);
+            agent.links = graph.weightedGraph.Dijkstra(startNode.identifier, endNode.identifier);
+        } while(agent.links.length <= 1);
+    }
 
     for (let i = 0; i < startNode.roads.length; i++) {
         const nextLinkIsEndJunction = startNode.roads[i].endJunction == agent.links[1];
@@ -222,6 +251,10 @@ const AddAgent = (graph, index) => {
     agent.links.splice(0, 1);
     
     const road = agent.currentRoad;
+    if (road == null) {
+        console.log(agent.links);
+        console.log(startNode);
+    }
 
     if(agent.forwards) {
         agent.currentLat = road.coordinates[0][1];
@@ -239,7 +272,7 @@ const AddAgent = (graph, index) => {
     
     agent.marker = L.marker([agent.currentLat, agent.currentLong]).on('click', (e) => ClickAgent(agent, e)).addTo(map);
     agent.segmentIndex = agent.forwards ? 0 : road.coordinates.length - 1;
-    agent.desiredSpeed = 80;
+    agent.desiredSpeed = 30;
     agent.linkDistAcc = 0;
 
     const nextJunction = graph.junctions[agent.links[0]];
@@ -258,6 +291,7 @@ const AddAgent = (graph, index) => {
     agent.segmentBearing = geoForm.Bearing(agent.currentLat, road, road.coordinates[nextSegment][1], agent.currentRoad.coordinates[nextSegment][0]);
 
     agents.push(agent);
+    nextJunction.approachingAgents.push(agent);
 
     const p = document.createElement('p');
     p.innerHTML = `Agent${index + 1}`;
@@ -449,11 +483,11 @@ const CornerSpeed = (agent, graph, segmentAddition) => {
 
     const diff = Math.abs(currentSegmentBearing - nextSegmentBearing);
     const t = (diff - 90) / (0 - 90);
-    const maxCornerSpeed = 20 + (80 - 20) * t;
+    const maxCornerSpeed = 20 + (30 - 20) * t;
     const maxDe = -3.5;
 
     let breakTimeCheck = agent.speed*1000*timeStep * reactionTime + (Math.pow(maxCornerSpeed / 2.237, 2) / -3);
-    let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (10*dist - breakTimeCheck));
+    let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (6*dist - breakTimeCheck));
     let speed = maxDe * reactionTime + sqrt;
 
     speed = speed / 1000 / timeStep;
@@ -515,14 +549,120 @@ const CornerSpeedLookAhead = (agent, graph, segmentAddition) => {
 
     const diff = Math.abs(currentSegmentBearing - nextSegmentBearing);
     const t = (diff - 90) / (0 - 90);
-    const maxCornerSpeed = 20 + (80 - 20) * t;
+    const maxCornerSpeed = 20 + (30 - 20) * t;
     const maxDe = -3.5;
 
     let breakTimeCheck = agent.speed*1000*timeStep * reactionTime + (Math.pow(maxCornerSpeed / 2.237, 2) / -3);
-    let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (10*dist - breakTimeCheck));
+    let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (6*dist - breakTimeCheck));
     let speed = maxDe * reactionTime + sqrt;
 
     return speed / 1000 / timeStep;
+}
+
+const PrioritySpeed = (agent, graph) => {
+    const nextJunction = graph.junctions[agent.links[0]];
+    if (nextJunction.roads.length <= 2) {
+        return 999999;
+    }
+
+    if (nextJunction.roadPairs[nextJunction.greenRoadPairIndex].includes(agent.currentRoad)) {
+        return 9999999;
+    }
+
+    
+    const distToJunction = geoForm.Distance(agent.currentLat, agent.currentLong, nextJunction.coordinates[1], nextJunction.coordinates[0]) * 1000;
+
+    const currentRoadPair = FindRoadPairWithRoad(nextJunction, agent.currentRoad);
+    const currentRoadPrio = EvaluateRoadPrio(agent.currentRoad.func);
+
+    let closestApproachingDist = Infinity;
+    const approachingAgents = [];
+    for (let i = 0; i < nextJunction.approachingAgents.length; i++) {
+        const agent2 = nextJunction.approachingAgents[i]
+
+        if (agent2 == agent) {
+            continue;
+        }
+        else if(agent.currentRoad.roadName == agent2.currentRoad.roadName) {
+            continue;
+        }
+        else if(currentRoadPrio > EvaluateRoadPrio(agent2.currentRoad.func)) {
+            continue;
+        }
+
+        approachingAgents.push(EvaluateRoadPrio(agent2.currentRoad.func));
+
+        const dist = geoForm.Distance(agent2.currentLat, agent2.currentLong, nextJunction.coordinates[1], nextJunction.coordinates[0]) * 1000;
+        if (dist < closestApproachingDist) {
+            closestApproachingDist = dist;
+        }
+    }
+
+    if (closestApproachingDist == Infinity) {
+        return 999999;
+    }
+    else if (Math.max(...approachingAgents) <= currentRoadPrio) {
+        return 999999;
+    }
+    else {
+        const reactionTime = 1.1;
+        const maxDe = -3.5;
+
+        let breakTimeCheck = agent.speed*1000*timeStep * reactionTime;
+
+        if (closestApproachingDist > distToJunction) {
+            const agent1check = Math.abs(maxDe * (3*(distToJunction) - breakTimeCheck));
+            const agent2check = Math.abs(maxDe * (3*(closestApproachingDist) - breakTimeCheck));
+
+            if(agent1check < agent2check / 1.5) {
+                return 999999;
+            }
+        }
+
+
+        let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (3*(distToJunction-5) - breakTimeCheck));
+        let speed = maxDe * reactionTime + sqrt;
+
+        if (isNaN(speed) || speed < 0) {
+            speed = 0;
+        }
+
+        return speed / 1000 / timeStep;
+    }
+}
+
+const FindRoadPairWithRoad = (junction, road) => {
+    for (let i = 0; i < junction.roadPairs.length; i++) {
+        if (junction.roadPairs[i].includes(road)) {
+            return junction.roadPairs[i];
+        }
+    }
+
+    console.error(junction);
+    console.error(road);
+    throw new Error('Could not find road pair with road');
+}
+
+const EvaluateRoadPrio = func => {
+    switch(func) {
+        case "Secondary Access Road":
+            return 0;
+        case "Local Access Road":
+            return 1;
+        case "Restricted Local Access Road":
+            return 2;
+        case "Local Road":
+            return 3;
+        case "Minor Road":
+            return 4;
+        case "B Road":
+            return 5;
+        case "A Road":
+            return 6;
+        default:
+            console.error(`Road func: ${func} can't be evaluated for priority! Returning 2 (Restricted Local Access Road).`);
+            return 2;
+    }
 }
 
 const ControlledJunctionSpeed = (agent, graph) => {
@@ -531,9 +671,15 @@ const ControlledJunctionSpeed = (agent, graph) => {
     const targetJunction = agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction;
     let junc = graph.junctions[targetJunction];
     let distCheck = geoForm.Distance(agent.currentLat, agent.currentLong, junc.coordinates[1], junc.coordinates[0]) * 1000 - 5;
-
-    if (junc.roadPairs[junc.greenRoadPairIndex].includes(agent.currentRoad)) {
-        return 9999999;
+    try {
+        if (junc.roadPairs[junc.greenRoadPairIndex].includes(agent.currentRoad)) {
+            return 9999999;
+        }
+    }
+    catch(error) {
+        console.error(junc.roadPairs[junc.greenRoadPairIndex]);
+        console.error(junc.roadPairs);
+        return 999999;
     }
 
     let breakTimeCheck = agent.speed*1000*timeStep * reactionTime;
@@ -550,7 +696,38 @@ const ControlledJunctionSpeed = (agent, graph) => {
 const UpdateJunctionSignals = graph => {
     for(const [key, value] of Object.entries(graph.junctions)) {
         FindRoadPairs(value);
+        SetupJunctionMarker(value);
     }
+}
+
+const SetupJunctionMarker = junction => {
+    const marker = L.marker([junction.coordinates[1], junction.coordinates[0]], {interactive: false}).addTo(map);
+    marker.setOpacity(0);
+    junction.marker = marker;
+
+    const div = CloneJunctionInfo();
+    document.body.appendChild(div);
+
+    const {left, top, height} = marker.getElement().getBoundingClientRect();
+
+    div.style.left = `${left}px`;
+    div.style.top = `${top + height / 2}px`;
+    junction.markerDiv = div;
+
+    div.addEventListener('click', () => JunctionInfoInteract(junction));
+}
+
+const CloneJunctionInfo = () => {
+    const junctionInfo = document.querySelector('#junction-info-clone');
+    const junctionInfoClone = junctionInfo.cloneNode(true);
+    junctionInfoClone.removeAttribute('id');
+
+    return junctionInfoClone;
+}
+
+const JunctionInfoInteract = junction => {
+    console.log(`ID:\n ${junction.identifier}\n LatLng:\n ${junction.coordinates[1]}, ${junction.coordinates[0]}`);
+    navigator.clipboard.writeText(junction.identifier);
 }
 
 const FindRoadPairs = junction => {
@@ -559,11 +736,27 @@ const FindRoadPairs = junction => {
     // 3, If <= 2 roads remain, match up
     // 4, If > 2 roads remain, check bearings of roads and match most similair until (3) is reached
 
-    const greenPairInterval = 30000;
+    const greenPairInterval = 20000;
+
+    junction.roadPairs.push([]);
+
+    if(junction.roads.length == 0) {
+        return;
+    }
+
+    if(!trafficJunctions.includes(junction.identifier)) {
+        junction.roadPairs = [junction.roads];
+        SwapGreenPairs(junction);
+        setInterval(() => {
+            SwapGreenPairs(junction);
+        }, greenPairInterval);
+        return;
+    }
 
     // 1
     if (junction.roads.length <= 2) {
-        junction.roadPairs = [junction.roads];
+        junction.roadPairs.push(junction.roads);
+        AddTrafficLights(junction);
         SwapGreenPairs(junction);
         setInterval(() => {
             SwapGreenPairs(junction);
@@ -673,7 +866,7 @@ const AddTrafficLights = junction => {
             const [lat, long] = geoForm.WalkPosition(latLng1.lat, latLng1.lng, bearing, 5/1000);
 
             const latLng = new L.LatLng(lat, long);
-            const trafficMarker = L.marker(latLng, {clickable: false}).addTo(map);
+            const trafficMarker = L.marker(latLng, {clickable: false, interactive: false}).addTo(map);
             trafficMarker.setOpacity(0);
 
             const trafficDiv = CloneTrafficLight();
@@ -686,15 +879,10 @@ const AddTrafficLights = junction => {
             document.body.appendChild(trafficDiv);
 
             const light = new network.Light(latLng, trafficMarker, trafficDiv, road);
-            trafficDiv.addEventListener('mousedown', () => ClickTrafficLight(junction, light));
 
             junction.lights.push(light);
         }
     }
-}
-
-const ClickTrafficLight = (junction, light) => {
-    console.log(junction.identifier);
 }
 
 const CloneTrafficLight = () => {
@@ -791,7 +979,7 @@ const FindRelativeRoadBearing = (junction, road) => {
 const UpdateAgents = graph => {
     agents.forEach((agent) => {
 
-        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph), CornerSpeed(agent, graph));
+        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph), CornerSpeed(agent, graph), PrioritySpeed(agent, graph));
         CornerSpeed(agent, graph);
         /*
         if (agent.nextRoad != null && agent.nextRoad.func != agent.currentRoad.func) {
@@ -812,7 +1000,7 @@ const UpdateAgents = graph => {
             const nextRoad = agent.forwards ? (agent.segmentIndex + 1 >= coords.length) : agent.segmentIndex <= 0;
 
             if (nextRoad) {
-                agent.links.splice(0, 1);
+                const previousNode = agent.links.splice(0, 1);
 
                 let queue = agent.forwards ? agent.currentRoad.forwardTrafficQueue : agent.currentRoad.backwardTrafficQueue;
                 queue.splice(queue.indexOf(agent), 1);
@@ -820,6 +1008,8 @@ const UpdateAgents = graph => {
                 if(agent.links.length == 0) {
                     try {
                         RemoveAgent(agents.indexOf(agent));
+                        const junc = graph.junctions[previousNode];
+                        junc.approachingAgents.splice(junc.approachingAgents.indexOf(agent), 1);
                     }
                     catch(error) {
                         console.log(error);
@@ -830,6 +1020,7 @@ const UpdateAgents = graph => {
                 }
 
                 const currentJunction = graph.junctions[agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction];
+                currentJunction.approachingAgents.splice(currentJunction.approachingAgents.indexOf(agent), 1);
                 agent.forwards = IsForwards(agent, currentJunction, agent.nextRoad);
                 agent.currentRoad = agent.nextRoad;
 
@@ -839,6 +1030,7 @@ const UpdateAgents = graph => {
                 queue.push(agent);
 
                 const nextJunction = graph.junctions[agent.links[0]];
+                nextJunction.approachingAgents.push(agent);
 
                 for(let i = 0; i < nextJunction.roads.length; i++) {
                     const foundStart = nextJunction.roads[i].startJunction == agent.links[1];

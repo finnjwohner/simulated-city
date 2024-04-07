@@ -6,6 +6,9 @@ export class Junction {
         this.greenRoadPairIndex = 0;
         this.roadPairs = [];
         this.lights = [];
+        this.marker = null;
+        this.markerDiv = null;
+        this.approachingAgents = [];
     }
 
     addRoad(road) {
