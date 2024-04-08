@@ -233,7 +233,7 @@ const SpitNodes = graph => {
 const timeStep = 1000/(30*timeScale);
 
 async function getGeoJson() {
-    const response = await fetch('http://localhost:3000/geoJson');
+    const response = await fetch('https://localhost:3000/geoJson');
     const json = await response.json();
 
     roadLinks = json.roadLink;
