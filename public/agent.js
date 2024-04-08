@@ -11,5 +11,8 @@ export default class Agent {
         this.speed = 0;
         this.forwards = true;
         this.nextRoad = null;
+        this.startTime = 0;
+        this.aliveTime = 0;
+        this.originDestination = null;
     }
 }
