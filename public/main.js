@@ -12,8 +12,8 @@ const removeAgentBtn = document.querySelector('#remove-agent-btn');
 let avgTimeDiff = 0;
 let agentsRemoved = 0;
 
-const carSpeed = 35;
-const timeScale = 1;
+const carSpeed = 25;
+const timeScale = 8;
 
 let deltaTime = 0;
 let previousMilliTime = Date.now();
@@ -128,7 +128,7 @@ async function getGeoJson() {
     InitialiseAgents(graph);
     UpdateJunctionSignals(graph);
     setInterval(() => {
-        deltaTime = (Date.now() - previousMilliTime) / 1000;
+        deltaTime = ((Date.now() - previousMilliTime) / 1000) * timeScale;
         UpdateAgents(graph);
         previousMilliTime = Date.now();
     }, timeStep)
@@ -193,7 +193,14 @@ const ClickAgent = (agent, e) => {
     const nextJuncIdentifier = agent.forwards ? agent.currentRoad.startJunction : agent.currentRoad.endJunction;
         const nextJunc = graph.junctions[nextJuncIdentifier];
     console.log(IsForwards(agent, nextJunc, agent.nextRoad) ? agent.nextRoad.forwardTrafficQueue : agent.nextRoad.backwardTrafficQueue);
+    const desiredSpeed = DesiredAgentSpeed(agent);
+    const controlledSpeed = ControlledSpeed(agent, graph);
+    const controlledJuncSpeed = ControlledJunctionSpeed(agent, graph);
+    const cornerSpeed = CornerSpeed(agent, graph);
+    const prioSpeed = PrioritySpeed(agent, graph);
 
+    console.log(`desired: ${desiredSpeed}, controlled: ${controlledSpeed}, controlledJunc: ${controlledJuncSpeed}, corner: ${cornerSpeed}, prioSpeed: ${prioSpeed}`);
+    console.log()
     if (agent.markerInfo == null) {
         agent.markerInfo = CreateMarkerInfo();
         document.body.appendChild(agent.markerInfo);
@@ -390,8 +397,8 @@ const DesiredAgentSpeed = (agent) => {
     let desiredSpeed = MphToMps(agent.desiredSpeed);
     let reactionTime = 1.1;
 
-    let speed =  2.5 * maximumAcceleration * reactionTime * (1 - (agent.speed*timeStep*1000)/desiredSpeed) * Math.pow((0.025 + (agent.speed*timeStep*1000)/desiredSpeed), 0.5);
-    return agent.speed + (speed / timeStep / 1000);
+    let speed =  2.5 * maximumAcceleration * reactionTime * (1 - (agent.speed)/desiredSpeed) * Math.pow((0.025 + (agent.speed)/desiredSpeed), 0.5);
+    return agent.speed + speed;
 }
 
 const FrontAgent = (agent, graph) => {
@@ -405,9 +412,12 @@ const FrontAgent = (agent, graph) => {
         }
 
         const nextJunc = graph.junctions[agent.links[0]];
-
-        queue = IsForwards(agent, nextJunc, agent.nextRoad) ? agent.nextRoad.forwardTrafficQueue : agent.nextRoad.backwardTrafficQueue;
+        
         frontAgent = CheckQueuePosFront(agent, queue);
+    }
+
+    if(frontAgent == agent) {
+        return null;
     }
 
     return frontAgent;
@@ -452,7 +462,7 @@ const IsForwards = (agent, startJunction, road) => {
 const ControlledSpeed = (agent, graph) => {
     const frontAgent = FrontAgent(agent, graph);
 
-    if (frontAgent == null) {
+    if (frontAgent == null || frontAgent == agent) {
         return 999999;
     }
 
@@ -460,7 +470,7 @@ const ControlledSpeed = (agent, graph) => {
     let reactionTime = 1.1;
 
     let distCheck = (DistBetweenAgents(agent, frontAgent)) * 1000 - 4;
-    let breakTimeCheck = agent.speed*1000*timeStep * reactionTime + (Math.pow(frontAgent.speed*1000*timeStep, 2) / -3);
+    let breakTimeCheck = agent.speed * reactionTime + (Math.pow(frontAgent.speed, 2) / -3);
     let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (2*distCheck - breakTimeCheck));
     let speed = maxDe * reactionTime + sqrt;
 
@@ -468,7 +478,7 @@ const ControlledSpeed = (agent, graph) => {
         speed = 0;
     }
 
-    return speed / 1000 / timeStep;
+    return speed;
 }
 
 const CornerSpeed = (agent, graph, segmentAddition) => {
@@ -526,16 +536,14 @@ const CornerSpeed = (agent, graph, segmentAddition) => {
     const maxCornerSpeed = 15 + (carSpeed - 15) * t;
     const maxDe = -3.5;
 
-    let breakTimeCheck = agent.speed*1000*timeStep * reactionTime + (Math.pow(maxCornerSpeed * 0.44704, 2) / -3);
+    let breakTimeCheck = agent.speed * reactionTime + (Math.pow(maxCornerSpeed * 0.44704, 2) / -3);
     let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (6*dist - breakTimeCheck));
     let speed = maxDe * reactionTime + sqrt;
-
-    speed = speed / 1000 / timeStep;
 
     const secondSpeed = CornerSpeedLookAhead(agent, graph, 1);
     const thirdSpeed = CornerSpeedLookAhead(agent, graph, 2);
 
-    const returnedSpeed = Math.min(speed, secondSpeed, thirdSpeed)
+    const returnedSpeed = Math.max(Math.min(speed, secondSpeed, thirdSpeed), 15);
     if (isNaN(returnedSpeed) || returnedSpeed < 0) {
         return 0;
     }
@@ -601,7 +609,7 @@ const CornerSpeedLookAhead = (agent, graph, segmentAddition) => {
         return 999999;
     }
 
-    let breakTimeCheck = agent.speed*1000*timeStep * reactionTime + (Math.pow(maxCornerSpeed * 0.44704, 2) / -3);
+    let breakTimeCheck = agent.speed * reactionTime + (Math.pow(maxCornerSpeed * 0.44704, 2) / -3);
     let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (6*(dist + t) - breakTimeCheck));
     let speed = maxDe * reactionTime + sqrt;
 
@@ -609,7 +617,7 @@ const CornerSpeedLookAhead = (agent, graph, segmentAddition) => {
         return 0;
     }
 
-    return speed / 1000 / timeStep;
+    return speed;
 }
 
 const PrioritySpeed = (agent, graph) => {
@@ -660,7 +668,7 @@ const PrioritySpeed = (agent, graph) => {
         const reactionTime = 1.1;
         const maxDe = -3.5;
 
-        let breakTimeCheck = agent.speed*1000*timeStep * reactionTime;
+        let breakTimeCheck = agent.speed * reactionTime;
 
         if (closestApproachingDist > distToJunction) {
             const agent1check = Math.abs(maxDe * (3*(distToJunction) - breakTimeCheck));
@@ -679,7 +687,7 @@ const PrioritySpeed = (agent, graph) => {
             return 0;
         }
 
-        return speed / 1000 / timeStep;
+        return speed;
     }
 }
 
@@ -734,7 +742,7 @@ const ControlledJunctionSpeed = (agent, graph) => {
         return 999999;
     }
 
-    let breakTimeCheck = agent.speed*1000*timeStep * reactionTime;
+    let breakTimeCheck = agent.speed * reactionTime;
     let sqrt = Math.sqrt(Math.pow(maxDe, 2) * Math.pow(reactionTime, 2) - maxDe * (3*distCheck - breakTimeCheck));
     let speed = maxDe * reactionTime + sqrt;
 
@@ -742,7 +750,7 @@ const ControlledJunctionSpeed = (agent, graph) => {
         return 0;
     }
 
-    return speed / 1000 / timeStep;
+    return speed;
 }
 
 const UpdateJunctionSignals = graph => {
@@ -945,17 +953,31 @@ const CloneTrafficLight = () => {
     return trafficLightClone;
 }
 
+// https://stackoverflow.com/questions/4467539/javascript-modulo-gives-a-negative-result-for-negative-numbers
+const mod = (x, n) => {
+    return ((x % n) + n) % n;
+}
+
 const SwapGreenPairs = junction => {
+    const previousGreenRoads = junction.roadPairs[junction.greenRoadPairIndex];
     junction.greenRoadPairIndex = (junction.greenRoadPairIndex + 1) % junction.roadPairs.length;
 
     const greenPairs = junction.roadPairs[junction.greenRoadPairIndex]
     const greenRoads = [];
+
     for(let i = 0; i < greenPairs.length; i++) {
         greenRoads.push(greenPairs[i]);
     }
 
     for(let i = 0; i < junction.lights.length; i++) {
         let green = false;
+        let previousGreen = false;
+
+        for (let k = 0; k < previousGreenRoads.length; k++) {
+            if (junction.lights[i].road.identifier == previousGreenRoads[k].identifier) {
+                previousGreen = true;
+            }
+        }
 
         for (let j = 0; j < greenRoads.length; j++) {
             if (junction.lights[i].road.identifier == greenRoads[j].identifier) {
@@ -966,14 +988,14 @@ const SwapGreenPairs = junction => {
         const colours = junction.lights[i].div.children;
 
         colours[0].style.backgroundColor = 'black';
-        colours[1].style.backgroundColor = 'orange';
-        colours[2].style.backgroundColor = green ? 'red' : 'black';
+        colours[1].style.backgroundColor = (!green && !previousGreen) ? 'black' : 'orange';
+        colours[2].style.backgroundColor = (green || (!green && !previousGreen)) ? 'red' : 'black';
 
         setTimeout(() => {
             colours[0].style.backgroundColor = green ? 'green' : 'black';
             colours[1].style.backgroundColor = 'black';
             colours[2].style.backgroundColor = green ? 'black' : 'red';
-        }, 3000);
+        }, 3000 / timeScale);
 
         
     }
@@ -1031,17 +1053,21 @@ const FindRelativeRoadBearing = (junction, road) => {
 const UpdateAgents = graph => {
     agents.forEach((agent) => {
 
-        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph), CornerSpeed(agent, graph), PrioritySpeed(agent, graph));
-        CornerSpeed(agent, graph);
-        /*
-        if (agent.nextRoad != null && agent.nextRoad.func != agent.currentRoad.func) {
-            agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph));
-        }*/
+        if(agent.nextRoad != null && agent.links.length != 0) {
+            const nextJunc = graph.junctions[agent.links[0]];
+            const nextQueue = IsForwards(agent, nextJunc, agent.nextRoad) ? agent.nextRoad.forwardTrafficQueue : agent.nextRoad.backwardTrafficQueue;
+        
+            if(nextQueue.includes(agent)) {
+                nextQueue.splice(nextQueue.indexOf(agent), 1);
+                console.error("removing premature queue placement");
+            }
+        }
 
-        const [lat, long] = geoForm.WalkPosition(agent.currentLat, agent.currentLong, agent.segmentBearing, agent.speed);
+        agent.speed = Math.min(DesiredAgentSpeed(agent), ControlledSpeed(agent, graph), ControlledJunctionSpeed(agent, graph), CornerSpeed(agent, graph), PrioritySpeed(agent, graph));
+        const [lat, long] = geoForm.WalkPosition(agent.currentLat, agent.currentLong, agent.segmentBearing, (agent.speed * deltaTime) / 1000);
         agent.currentLat = lat;
         agent.currentLong = long;
-        agent.segmentDistAcc += agent.speed;
+        agent.segmentDistAcc += (agent.speed * deltaTime) / 1000;
 
         agent.aliveTime = (Date.now() - agent.startTime) * timeScale;
 
@@ -1054,27 +1080,17 @@ const UpdateAgents = graph => {
             const nextRoad = agent.forwards ? (agent.segmentIndex + 1 >= coords.length) : agent.segmentIndex <= 0;
 
             if (nextRoad) {
-                const previousNode = agent.links.splice(0, 1);
+                const currentJunction = graph.junctions[agent.links.splice(0, 1)];
+                currentJunction.approachingAgents.splice(currentJunction.approachingAgents.indexOf(agent), 1);
 
                 let queue = agent.forwards ? agent.currentRoad.forwardTrafficQueue : agent.currentRoad.backwardTrafficQueue;
                 queue.splice(queue.indexOf(agent), 1);
 
                 if(agent.links.length == 0) {
-                    try {
-                        RemoveAgent(agents.indexOf(agent));
-                        const junc = graph.junctions[previousNode];
-                        junc.approachingAgents.splice(junc.approachingAgents.indexOf(agent), 1);
-                    }
-                    catch(error) {
-                        console.log(error);
-                        console.log(agent);
-                    }
-                    
+                    RemoveAgent(agents.indexOf(agent));
                     return;
                 }
 
-                const currentJunction = graph.junctions[agent.forwards ? agent.currentRoad.endJunction : agent.currentRoad.startJunction];
-                currentJunction.approachingAgents.splice(currentJunction.approachingAgents.indexOf(agent), 1);
                 agent.forwards = IsForwards(agent, currentJunction, agent.nextRoad);
                 agent.currentRoad = agent.nextRoad;
 
