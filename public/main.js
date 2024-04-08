@@ -11,6 +11,7 @@ const removeAgentBtn = document.querySelector('#remove-agent-btn');
 
 let avgTimeDiff = 0;
 let agentsRemoved = 0;
+const removedAgents = [];
 
 const carSpeed = 25;
 const timeScale = 8;
@@ -20,10 +21,11 @@ let previousMilliTime = Date.now();
 
 const map = L.map('map', {zoomControl: false, minZoom: 14, maxZoom: 19}).setView([55.9581957731748, -3.1314852713325], 16);
 
+/*
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-}).addTo(map);
+}).addTo(map);*/
 
 map.on('zoom', e => {
     const zoom = map.getZoom();
@@ -159,7 +161,7 @@ const AddDijkstraEdges = (graph, dijkstraGraph, nodeID) => {
     const links = graph.junctions[nodeID].roads;
     for(let i = 0; i < links.length; i++) {
         if(links[i].func.includes("Restricted")) {
-            console.log("Not Including Restricted Road Edge In Dijkstra Representation");
+            console.warn("Not including restricted roads in Dijkstra representation.");
             continue;
         }
 
@@ -247,7 +249,13 @@ const AddAgent = (graph, index) => {
             const oD = originDestinations[Math.floor(Math.random()*originDestinations.length)];
             startNode = graph.junctions[oD.startNode];
             endNode = graph.junctions[oD.endNode];
-            agent.links = graph.weightedGraph.Dijkstra(startNode.identifier, endNode.identifier);
+
+            if(startNode == undefined || endNode == undefined) {
+                agent.links = [];
+            }
+            else {
+                agent.links = graph.weightedGraph.Dijkstra(startNode.identifier, endNode.identifier);
+            }
             agent.originDestination = oD;
         } while(agent.links.length <= 1);
         
@@ -361,25 +369,25 @@ const RemoveAgent = index => {
     numAgents--;
     agentsRemoved++;
 
-    console.log(`${numAgents} agents remain`);
-
     agentDisplay.removeChild(agentDisplay.children[index]);
 
-    const agent = agents.splice(index, 1);
+    const agent = agents.splice(index, 1)[0];
 
-    agent[0].originDestination.trueTime = (agent[0].aliveTime / 1000);
+    removedAgents.push(agent);
 
-    console.log(`Agent removed, estimated time was ${agent[0].originDestination.estimatedTime} seconds, and it's true time was ${agent[0].originDestination.trueTime}`);
+    agent.originDestination.trueTime = (agent.aliveTime / 1000);
 
-    const diff = Math.abs(agent[0].originDestination.estimatedTime - agent[0].originDestination.trueTime);
-    avgTimeDiff += ((diff / agent[0].originDestination.estimatedTime) * 100);
-    map.removeLayer(agent[0].marker);
+    const diff = Math.abs(agent.originDestination.estimatedTime - agent.originDestination.trueTime);
+    avgTimeDiff += ((diff / agent.originDestination.estimatedTime) * 100);
+    map.removeLayer(agent.marker);
 
-    if (agent[0].markerInfo != null) {
-        agent[0].markerInfo.remove();
+    if (agent.markerInfo != null) {
+        agent.markerInfo.remove();
     }
 
-    console.log(`Average time difference is ${avgTimeDiff / agentsRemoved} percent`);
+    if (numAgents == 0) {
+        console.log(`Average time difference was ${avgTimeDiff / agentsRemoved} percent`);
+    }
 }
 
 const MphToMps = speedMph => {
@@ -1059,7 +1067,7 @@ const UpdateAgents = graph => {
         
             if(nextQueue.includes(agent)) {
                 nextQueue.splice(nextQueue.indexOf(agent), 1);
-                console.error("removing premature queue placement");
+                console.warn("Agent queue misplacement, correcting...");
             }
         }
 
