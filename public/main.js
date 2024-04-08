@@ -6,15 +6,23 @@ import trafficJunctions from './trafficJunctions.js';
 import originDestinations from './originDestinations.js';
 
 const agentDisplay = document.querySelector('.agent-display');
-const addAgentBtn = document.querySelector('#add-agent-btn');
-const removeAgentBtn = document.querySelector('#remove-agent-btn');
+const numAgentsInput = document.querySelector('#num-agents-input');
+const desiredSpeedInput = document.querySelector('#desired-speed-input');
+const timescaleInput = document.querySelector('#timescale-input');
 
+let avgTimeDiffPercent = 0;
 let avgTimeDiff = 0;
-let agentsRemoved = 0;
-const removedAgents = [];
 
-const carSpeed = 25;
-const timeScale = 8;
+let agentsRemoved = 0;
+let removedAgents = [];
+let junctionTrafficIntervals = [];
+
+let started = false;
+let paused = false;
+let updateInterval = null;
+
+let carSpeed = 25;
+let timeScale = 8;
 
 let deltaTime = 0;
 let previousMilliTime = Date.now();
@@ -26,6 +34,116 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 }).addTo(map);*/
+
+const startBtn = document.querySelector('#start-btn');
+const pauseBtn = document.querySelector('#pause-btn');
+const stopBtn = document.querySelector('#stop-btn');
+
+const timeDiffAvgInput = document.querySelector('#timeDiffAvg');
+const timeDiffPercentAvgInput = document.querySelector('#timeDiffPercentAvg');
+
+const ResetBtns = () => {
+    startBtn.classList.remove('pushed');
+    pauseBtn.classList.remove('pushed');
+    stopBtn.classList.remove('pushed');
+}
+
+startBtn.addEventListener('click', () => ClickStartBtn());
+pauseBtn.addEventListener('click', () => ClickPauseBtn());
+stopBtn.addEventListener('click', () => ClickStopBtn());
+
+const ClickStartBtn = () => {
+    ResetBtns();
+    startBtn.classList.add('pushed');
+
+    StartSim();
+}
+
+const ClickPauseBtn = () => {
+    ResetBtns();
+    pauseBtn.classList.add('pushed');
+
+    PauseSim();
+}
+
+const ClickStopBtn = () => {
+    ResetBtns();
+    stopBtn.classList.add('pushed');
+
+    StopSim();
+}
+
+const StartSim = () => {
+    if(paused && started) {
+        paused = false;
+    }
+    else if (!started) {
+        started = true;
+        paused = false;
+
+        numAgents = numAgentsInput.value;
+        carSpeed = desiredSpeedInput.value;
+        timeScale = timescaleInput.value;
+
+        avgTimeDiff = 0;
+        avgTimeDiffPercent = 0;
+        agentsRemoved = 0;
+
+        timeDiffAvgInput.value = avgTimeDiff;
+        timeDiffPercentAvgInput.value = avgTimeDiffPercent;
+
+        if(isNaN(numAgents) || numAgents <= 0) {
+            console.error("Number of Agents must be a valid number above 0.");
+            ClickStopBtn();
+            return;
+        }
+
+        if(isNaN(carSpeed) || carSpeed <= 0) {
+            console.error("Desired speed must be a valid number above 0.");
+            ClickStopBtn();
+            return;
+        }
+
+        if(isNaN(timeScale) || timeScale <= 0 || timeScale > 10) {
+            console.error("Timescale must be a valid number between 1 and 10");
+            ClickStopBtn();
+            return;
+        }
+
+        InitialiseAgents(graph);
+
+        for(const [key, value] of Object.entries(graph.junctions)) {
+            FindRoadPairs(value);
+        }
+
+        updateInterval = setInterval(() => {
+            deltaTime = ((Date.now() - previousMilliTime) / 1000) * timeScale;
+            UpdateAgents(graph);
+            previousMilliTime = Date.now();
+        }, timeStep)
+    }
+}
+
+const PauseSim = () => {
+    paused = !paused;
+}
+
+const StopSim = () => {
+    clearInterval(updateInterval);
+
+    while(agents.length > 0) {
+        RemoveAgentForce(0);
+    }
+
+    for(let i = 0; i < junctionTrafficIntervals.length; i++) {
+        clearInterval(junctionTrafficIntervals[i]);
+    }
+
+    junctionTrafficIntervals = [];
+
+    started = false;
+    paused = false;
+}
 
 map.on('zoom', e => {
     const zoom = map.getZoom();
@@ -122,18 +240,12 @@ async function getGeoJson() {
     roadNodes = json.roadNode;
 
     L.geoJson(roadLinks).addTo(map);
-    //L.geoJson(json.roadNode).addTo(map);
-
     graph = network.createGraph(roadLinks, roadNodes);
-
     InitDijkstra(graph);
-    InitialiseAgents(graph);
-    UpdateJunctionSignals(graph);
-    setInterval(() => {
-        deltaTime = ((Date.now() - previousMilliTime) / 1000) * timeScale;
-        UpdateAgents(graph);
-        previousMilliTime = Date.now();
-    }, timeStep)
+
+    for(const [key, value] of Object.entries(graph.junctions)) {
+        SetupJunctionMarker(value);
+    }
 }
 
 getGeoJson();
@@ -337,29 +449,19 @@ const AddAgent = (graph, index) => {
     agentDisplay.appendChild(p);
 }
 
-addAgentBtn.addEventListener('click', () => {
-    if (graph == null) {
-        return;
-    }
-
-    numAgents++;
-    AddAgent(graph, agents.length - 1);
-});
-
-removeAgentBtn.addEventListener('click', () => {
+const RemoveAgentForce = index => {
     if (graph == null || agents.length == 0) {
         return;
     }
 
     numAgents--;
-    agentDisplay.removeChild(agentDisplay.lastChild);
-    const agent = agents.pop();
+    agentDisplay.removeChild(agentDisplay.children[index]);
+    const agent = agents.splice(index, 1)[0];
     map.removeLayer(agent.marker);
-
     if (agent.markerInfo != null) {
         agent.markerInfo.remove();
     }
-})
+}
 
 const RemoveAgent = index => {
     if (graph == null || agents.length == 0) {
@@ -378,15 +480,20 @@ const RemoveAgent = index => {
     agent.originDestination.trueTime = (agent.aliveTime / 1000);
 
     const diff = Math.abs(agent.originDestination.estimatedTime - agent.originDestination.trueTime);
-    avgTimeDiff += ((diff / agent.originDestination.estimatedTime) * 100);
+    avgTimeDiff += diff;
+    avgTimeDiffPercent += ((diff / agent.originDestination.estimatedTime) * 100);
     map.removeLayer(agent.marker);
+
+    timeDiffPercentAvgInput.value = `${Math.round((avgTimeDiffPercent / agentsRemoved) * 100) / 100}%`;
+    timeDiffAvgInput.value = `${Math.round((avgTimeDiff / agentsRemoved) * 100) / 100}`;
 
     if (agent.markerInfo != null) {
         agent.markerInfo.remove();
     }
 
     if (numAgents == 0) {
-        console.log(`Average time difference was ${avgTimeDiff / agentsRemoved} percent`);
+        console.log(`Average time difference was ${avgTimeDiffPercent / agentsRemoved} percent`);
+        ClickStopBtn();
     }
 }
 
@@ -761,13 +868,6 @@ const ControlledJunctionSpeed = (agent, graph) => {
     return speed;
 }
 
-const UpdateJunctionSignals = graph => {
-    for(const [key, value] of Object.entries(graph.junctions)) {
-        FindRoadPairs(value);
-        SetupJunctionMarker(value);
-    }
-}
-
 const SetupJunctionMarker = junction => {
     const marker = L.marker([junction.coordinates[1], junction.coordinates[0]], {interactive: false}).addTo(map);
     marker.setOpacity(0);
@@ -804,6 +904,8 @@ const FindRoadPairs = junction => {
     // 3, If <= 2 roads remain, match up
     // 4, If > 2 roads remain, check bearings of roads and match most similair until (3) is reached
 
+    junction.roadPairs = [];
+
     const greenPairInterval = 20000 / timeScale;
 
     junction.roadPairs.push([]);
@@ -815,9 +917,11 @@ const FindRoadPairs = junction => {
     if(!trafficJunctions.includes(junction.identifier)) {
         junction.roadPairs = [junction.roads];
         SwapGreenPairs(junction);
-        setInterval(() => {
+        const interval = setInterval(() => {
             SwapGreenPairs(junction);
         }, greenPairInterval);
+
+        junctionTrafficIntervals.push(interval);
         return;
     }
 
@@ -826,9 +930,11 @@ const FindRoadPairs = junction => {
         junction.roadPairs.push(junction.roads);
         AddTrafficLights(junction);
         SwapGreenPairs(junction);
-        setInterval(() => {
+        const interval = setInterval(() => {
             SwapGreenPairs(junction);
         }, greenPairInterval);
+
+        junctionTrafficIntervals.push(interval);
         return;
     }
 
@@ -890,9 +996,11 @@ const FindRoadPairs = junction => {
     if(roadsRemaining.length == 0) {
         AddTrafficLights(junction);
         SwapGreenPairs(junction);
-        setInterval(() => {
+        const interval = setInterval(() => {
             SwapGreenPairs(junction);
         }, greenPairInterval);
+
+        junctionTrafficIntervals.push(interval);
         return;
     }
 
@@ -901,9 +1009,11 @@ const FindRoadPairs = junction => {
         junction.roadPairs.push(roadsRemaining);
         AddTrafficLights(junction)
         SwapGreenPairs(junction);
-        setInterval(() => {
+        const interval = setInterval(() => {
             SwapGreenPairs(junction);
         }, greenPairInterval);
+
+        junctionTrafficIntervals.push(interval);
         return;
     }
 
@@ -912,13 +1022,19 @@ const FindRoadPairs = junction => {
 
     AddTrafficLights(junction)
     SwapGreenPairs(junction);
-    setInterval(() => {
+    const interval = setInterval(() => {
         
         SwapGreenPairs(junction);
     }, greenPairInterval);
+
+    junctionTrafficIntervals.push(interval);
 }
 
 const AddTrafficLights = junction => {
+    if(junction.lights.length > 0) {
+        return;
+    }
+
     for(let i = 0; i < junction.roadPairs.length; i++) {
         for (let j = 0; j < junction.roadPairs[i].length; j++) {
             const road = junction.roadPairs[i][j];
@@ -967,6 +1083,10 @@ const mod = (x, n) => {
 }
 
 const SwapGreenPairs = junction => {
+    if(paused) {
+        return;
+    }
+
     const previousGreenRoads = junction.roadPairs[junction.greenRoadPairIndex];
     junction.greenRoadPairIndex = (junction.greenRoadPairIndex + 1) % junction.roadPairs.length;
 
@@ -1059,6 +1179,10 @@ const FindRelativeRoadBearing = (junction, road) => {
 }
 
 const UpdateAgents = graph => {
+    if(paused) {
+        return;
+    }
+
     agents.forEach((agent) => {
 
         if(agent.nextRoad != null && agent.links.length != 0) {

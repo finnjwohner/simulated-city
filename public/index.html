@@ -37,16 +37,43 @@
             </header>
             <aside>
                 <div class="flex-row">
-                    <button>Start</button>
-                    <button>Pause</button>
-                    <button>Stop</button>
+                    <button id="start-btn">Start</button>
+                    <button id="pause-btn">Pause</button>
+                    <button class="pushed" id="stop-btn">Stop</button>
                 </div>
-                <div class="flex-row">
-                    <h3>Vehicle Agents</h3>
-                    <button class="square" id="add-agent-btn">+</button>
-                    <button class="square" id="remove-agent-btn">-</button>
+                <div class="flex-column padding-flex">
+                    <h4>Simulation Paramaters</h4>
+                    <div class="flex-row apart">
+                        <h5>Vehicle Agents</h5>
+                        <input type="text" inputmode="numeric" value="100" id="num-agents-input" min="0" maxlength="4">
+                    </div>
+                    <div class="flex-row apart">
+                        <h5>Desired Speed (mph)</h5>
+                        <input type="text" inputmode="numeric" value="25" id="desired-speed-input" min="0" maxlength="3">
+                    </div>
+                    <div class="flex-row apart">
+                        <h5>Timescale (multiplier)</h5>
+                        <input type="text" inputmode="numeric" value="5" id="timescale-input" min="0" maxlength="2">
+                    </div>
                 </div>
-                <div class="agent-display"></div>
+                <div class="flex-column padding-flex">
+                    <h4>Resultant Data</h4>
+                    <div class="flex-row apart">
+                        <h5>Avg Estimated/True Arrival Time Difference</h5>
+                        <input type="text" value="0" id="timeDiffAvg" class="readonly-input" readonly>
+                    </div>
+                    <div class="flex-row apart">
+                        <h5>Avg Percent Estimated/True Arrival Time Difference</h5>
+                        <input type="text" value="0" id="timeDiffPercentAvg" class="readonly-input" readonly>
+                    </div>
+                </div>
+                <div class="flex-column padding-flex" style="overflow: hidden">
+                    <h4>Agents</h4>
+                    <div class="flex-column agent-display">
+
+                    </div>
+                </div>
+                <!--<div class="agent-display"></div>!-->
             </aside>
         </div>
         

@@ -13,9 +13,38 @@
     margin: 0;
 }
 
+input[type=text] {
+    background-color: #1a1a1a;
+    border: none;
+    border: 2px solid grey;
+    color: #e0e0e0;
+    font-family: 'Arial';
+    width: 6rem;
+    padding: 0.5rem 2rem;
+    text-align: center;
+    border-radius: 15px;
+    transition: background-color 0.1s ease-in-out;
+}
+
+input[type=text]:hover {
+    background-color: #2e2e2e;
+}
+
+input[type=text].readonly-input {
+    outline: none;
+    cursor: default;
+    padding: 0.5rem 1rem;
+    width: 6rem;
+}
+
+input[type=text].readonly-input:hover {
+    background-color: #1a1a1a;
+}
+
 body {
     background-color: #1a1a1a;
     pointer-events: none;
+    overflow: hidden;
 }
 
 #map {
@@ -26,6 +55,8 @@ body {
     position: absolute;
     top: 0;
     left: 0;
+    overflow: none;
+    
 }
 
 .leaflet-container {
@@ -50,7 +81,6 @@ header {
 aside {
     pointer-events: auto;
     display: flex;
-    padding: 1rem;
     flex: 1;
     flex-direction: column;
     width: 350px;
@@ -60,7 +90,6 @@ aside {
 }
 
 button {
-    border-radius: 3px;
     border: none;
     background: rgb(65, 65, 65);
     font-family: sans-serif;
@@ -68,25 +97,70 @@ button {
     font-size: 16px;
     color: #e0e0e0;
     font-weight: 600;
-    box-shadow: rgba(0, 0, 0, 0.15) 0px 5px 15px;
     cursor: pointer;
     transition: background-color 0.1s ease-in-out;
+}
+
+button.pushed {
+    box-shadow: inset 0px 2px 2px rgb(37, 37, 37);
+    cursor: default;
 }
 
 button:hover {
     background: rgb(104, 104, 104);
 }
 
+button.pushed#start-btn {
+    background-color: rgb(6, 97, 6);
+}
+
+button.pushed#pause-btn {
+    background-color: rgb(173, 173, 173);
+}
+
+button.pushed#stop-btn {
+    background-color: rgb(83, 4, 4);
+}
+
 .flex-row {
     display: flex;
     align-items: center;
-    padding-bottom: 1rem;
-    border-bottom: 2px solid rgb(48, 48, 48);
-    margin-bottom: 1rem;
 }
 
-.flex-row>* {
-    margin-right: 1rem;
+.flex-column {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 2px solid rgb(48, 48, 48);
+}
+
+h4 {
+    margin-bottom: 1rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 2px solid grey;
+}
+
+.flex-column > .flex-row {
+    margin-bottom: 0.5rem;
+}
+
+.flex-column > .flex-row:last-child {
+    margin-bottom: 0;
+}
+
+.apart {
+    justify-content: space-between;
+}
+
+.padding-flex {
+    padding: 1rem 1rem;
+}
+
+#num-agents-input {
+    margin-left: 1rem;
+}
+
+.flex-row button {
+    flex: 1;
 }
 
 .flex-row>*:last-child {
@@ -94,7 +168,13 @@ button:hover {
 }
 
 .agent-display {
-    margin-top: 0.3rem;
+    display: grid;
+    grid-template-columns: auto auto;
+    overflow-y: scroll;
+}
+
+.agent-display p {
+    cursor: default;
 }
 
 button.square {
